@@ -203,15 +203,18 @@ async function tick(){
   if(!url||!tok){
     $("cfg").classList.add("show");
     $("dBoard").className="dot"; $("tBoard").textContent="Chưa cài đặt";
+    $("bStop").disabled=$("bClear").disabled=true;
     return;
   }
   try{ d=await goi("action=status"); }
   catch(e){
+    $("bStop").disabled=$("bClear").disabled=true;
     $("dBoard").className="dot r"; $("tBoard").textContent="Không gọi được Apps Script";
     $("foot").textContent="Lỗi: "+e.message+". Kiểm tra lại đường dẫn …/exec và quyền truy cập “Bất kỳ ai”.";
     return;
   }
   if(!d.ok){
+    $("bStop").disabled=$("bClear").disabled=true;
     $("dBoard").className="dot r";
     $("tBoard").textContent=d.loi==="TOKEN-SAI"?"Sai mã bí mật":"Lỗi: "+d.loi;
     $("cfg").classList.add("show");
