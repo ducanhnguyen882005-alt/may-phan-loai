@@ -242,6 +242,12 @@ leds($("ioB1"),B1);leds($("ioB2"),B2);leds($("ioOut"),OU);
 $("ioPos").innerHTML=[["pM3","Encoder M3 (xung)"],["pM4","Encoder M4 (xung)"],["pCell","Ô đích hiện tại"]]
  .map(x=>`<div class="led"><span class="t"><span class="n" id="${x[0]}">—</span><br>
    <span class="s">${x[1]}</span></span></div>`).join("");
+/* Sóng WiFi của ESP32: ≥ −67 dBm là ổn định, dưới −75 dBm dễ rớt */
+function wifiChu(h){
+  if(!h||typeof h.rssi!=="number") return "";
+  const r=h.rssi, muc=r>=-60?"mạnh":r>=-67?"tốt":r>=-75?"yếu":"rất yếu";
+  return " · WiFi "+r+" dBm ("+muc+")";
+}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ESP32 ghi lên ngay khi số liệu đổi, máy đứng yên thì 5 s/lần. Quá chừng
@@ -354,7 +360,7 @@ function ve(){
   const song=tuoi<T_BOARD_MAT;
   $("dBoard").className="dot "+(song?"g":"r");
   $("tBoard").textContent=!d.boardGoiLuc?"Board chưa gọi lên lần nào"
-    :song?"ESP32 gọi lên "+Math.round(tuoi/1000)+" giây trước"
+    :song?"ESP32 gọi lên "+Math.round(tuoi/1000)+" giây trước"+wifiChu(d.hienTai)
     :"ESP32 im lặng từ "+luc(d.boardGoiLuc);
 
   const h=d.hienTai, al=$("alert");
