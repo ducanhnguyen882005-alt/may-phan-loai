@@ -1,7 +1,15 @@
-# Xem máy phân loại từ xa qua GitHub Pages
+# Xem máy phân loại từ xa
 
-`index.html` là trang tĩnh trên GitHub Pages, mở được từ bất cứ đâu:
-https://ducanhnguyen882005-alt.github.io/may-phan-loai/
+`index.html` là trang tĩnh, mở được từ bất cứ đâu:
+**https://may-phan-loai.web.app** (Firebase Hosting của dự án `may-phan-loai`).
+
+Đưa bản mới lên (chạy trong thư mục đồ án, đã `firebase login` một lần):
+
+```
+firebase deploy --only hosting --project may-phan-loai --config "code/GitHubPages/firebase.json"
+```
+
+`firebase.json` chặn không cho `README.md`, `.git` và các file cấu hình lên trang.
 
 ## Trang lấy dữ liệu từ đâu
 
