@@ -59,7 +59,8 @@ button.stop{background:var(--err);border-color:var(--err);color:#fff;font-size:1
 .kpi .sub u{text-decoration:none;color:var(--pk)}
 .chart{display:flex;align-items:stretch;gap:4px;height:170px;padding-top:8px}
 .bar{flex:1;min-width:6px;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;position:relative}
-.bar i,.bar u{display:block}
+.bar i,.bar u,.bar b{display:block}
+.bar b{background:var(--tx3);border-radius:2px 2px 0 0}
 .bar i{background:var(--kl);border-radius:2px 2px 0 0}
 .bar u{background:var(--pk)}
 .bar em{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#000;color:#fff;
@@ -128,7 +129,7 @@ input:focus{outline:2px solid var(--acc);outline-offset:-1px}
 
 <div class="grid counts">
   <div class="kpi"><div class="lbl">Hôm nay</div><div class="v" id="cDay">—</div>
-    <div class="sub"><i id="cDayK">0</i> kim loại · <u id="cDayP">0</u> phi kim</div></div>
+    <div class="sub"><i id="cDayK">0</i> kim loại · <u id="cDayP">0</u> phi kim<span id="cDayR"></span></div></div>
   <div class="kpi"><div class="lbl">Từ lúc bật máy</div><div class="v" id="cRun">—</div>
     <div class="sub">phôi</div></div>
   <div class="kpi"><div class="lbl">Khay hiện tại</div><div class="v" id="cTray">—<span
@@ -146,6 +147,7 @@ input:focus{outline:2px solid var(--acc);outline-offset:-1px}
   <div class="legend">
     <span><b style="background:var(--kl)"></b>Kim loại</span>
     <span><b style="background:var(--pk)"></b>Phi kim</span>
+    <span><b style="background:var(--tx3)"></b>Chưa rõ loại</span>
   </div>
 </div>
 
@@ -239,7 +241,7 @@ function doiDang(g){
   const t=g.trangThai||null, n=g.theoNgay||{};
   return {ok:1,bayGio:Date.now(),boardGoiLuc:t?t.luc:0,hienTai:t,
     lenhCho:g.lenh||"",lenhDaChay:g.lenhDaChay||null,
-    ngay:Object.keys(n).sort().slice(-14).map(k=>({d:k,kl:n[k][0],pk:n[k][1]}))};
+    ngay:Object.keys(n).sort().slice(-14).map(k=>({d:k,kl:n[k][0],pk:n[k][1],kr:n[k][2]||0}))};
 }
 async function layTrangThai(){ return doiDang(await fb("")); }
 function veTuG(){ if(g===null) return; d=doiDang(g); if(!dangDung) ve(); }
@@ -291,6 +293,8 @@ function ve(){
       :h.link?(S1[h.s1]||("Trạng thái "+h.s1)):"Mất tín hiệu Board 1";
     $("stSub").textContent="Board 1: bước "+h.s1+"  ·  Board 2: "+(S2[h.s2]||("bước "+h.s2));
     $("cDay").textContent=h.today; $("cDayK").textContent=h.kl; $("cDayP").textContent=h.pk;
+    /* kr: phôi ESP32 tự cộng bù theo bộ đếm Board 1, không biết loại */
+    $("cDayR").textContent=h.kr?" · "+h.kr+" chưa rõ loại":"";
     $("cRun").textContent=h.phien; $("cTray").firstChild.nodeValue=h.b2n;
     const loi=h.f1||h.f2;
     if(!song){
@@ -318,12 +322,13 @@ function ve(){
   /* biểu đồ */
   const n=d.ngay||[];
   hien("chEmpty",!n.length);
-  const max=Math.max(1,...n.map(x=>x.kl+x.pk));
+  const max=Math.max(1,...n.map(x=>x.kl+x.pk+x.kr));
   $("chart").innerHTML=n.map(x=>`<div class="bar"><em>${x.d.slice(8)}/${x.d.slice(5,7)}: `
-    +`${x.kl} KL · ${x.pk} PK</em><i style="height:${x.kl/max*100}%"></i>`
+    +`${x.kl} KL · ${x.pk} PK${x.kr?" · "+x.kr+" chưa rõ":""}</em>`
+    +`<b style="height:${x.kr/max*100}%"></b><i style="height:${x.kl/max*100}%"></i>`
     +`<u style="height:${x.pk/max*100}%"></u></div>`).join("");
   $("xax").innerHTML=n.map(x=>`<span>${+x.d.slice(8)}/${+x.d.slice(5,7)}</span>`).join("");
-  $("c14").textContent=n.reduce((s,x)=>s+x.kl+x.pk,0);
+  $("c14").textContent=n.reduce((s,x)=>s+x.kl+x.pk+x.kr,0);
   $("foot").textContent=(es&&es.readyState===1?"Đang nhận trực tiếp từ Firebase":"Đang nối lại Firebase…")
     +" · ESP32 gửi lần cuối lúc "+(d.boardGoiLuc?luc(d.boardGoiLuc):"—")+".";
 }
