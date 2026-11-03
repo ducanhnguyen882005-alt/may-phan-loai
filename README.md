@@ -6,7 +6,7 @@ https://ducanhnguyen882005-alt.github.io/may-phan-loai/
 ## Trang lấy dữ liệu từ đâu
 
 ```
-ESP32 (WiFi trường) ──HTTPS, 10 giây/lần──► Firebase Realtime Database ◄──HTTPS── trang GitHub Pages
+ESP32 (WiFi trường) ──HTTPS, giữ kết nối──► Firebase Realtime Database ──kênh đẩy (SSE)──► trang GitHub Pages
                                              (gói Spark, miễn phí)
 ```
 
@@ -14,8 +14,12 @@ Trang **không gọi thẳng ESP32**: trình duyệt chặn trang HTTPS gọi v�
 `http://192.168.x.x`, còn WiFi trường thì chặn mọi kết nối gọi vào board.
 Cả ESP32 lẫn trang web cùng gọi ra Firebase.
 
-- Số liệu trễ tối đa khoảng **10 giây**. Trang tự tải lại mỗi 5 giây.
-- Lệnh tới máy sau **10–20 giây**.
+- ESP32 gửi **ngay khi số liệu đổi** (kiểm tra 0,2 s/lần, mỗi lần gửi
+  ~1,5 s khi máy chạy). Máy đứng yên thì 5 s gửi một nhịp.
+- Trang **không hỏi lặp lại**: Firebase đẩy thay đổi xuống qua
+  EventSource, hiện gần như tức thì.
+- ESP32 hỏi lệnh mỗi giây: lệnh tới ESP32 sau **0,5–1,5 giây** (đo ngày
+  03/11/2026). Lệnh DỪNG hai bước mất khoảng 2–5 giây.
 
 ## Dữ liệu trong database
 
@@ -60,7 +64,7 @@ Tên lệnh vẫn là `SHEET` vì chúng kế thừa từ bản dùng Google She
 
 | Phần | Nội dung |
 |---|---|
-| Chấm trạng thái | ESP32 gửi lên cách đây bao lâu. Quá 45 giây thì báo đỏ |
+| Chấm trạng thái | ESP32 gửi lên cách đây bao lâu. Quá 20 giây thì báo đỏ |
 | Trạng thái máy | Bước Board 1 / Board 2, bảng đỏ khi có lỗi |
 | Ô đếm | Hôm nay (kim loại / phi kim), từ lúc bật máy, phôi trong khay, tổng 14 ngày |
 | Biểu đồ | Sản lượng 14 ngày |

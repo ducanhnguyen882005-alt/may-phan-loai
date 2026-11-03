@@ -5,8 +5,9 @@
 <!--
   Trang tĩnh cho GitHub Pages. Không nói chuyện thẳng với ESP32 (trình
   duyệt chặn trang HTTPS gọi vào http://192.168.x.x trong xưởng), mà đọc
-  qua Firebase Realtime Database: ESP32 ghi trạng thái lên đó 10 giây một
-  lần và lấy lệnh ở /lenh, trang này đọc/ghi cùng chỗ qua REST.
+  qua Firebase Realtime Database: ESP32 ghi trạng thái lên đó ngay khi số
+  liệu đổi (đứng yên thì 5 s/lần) và lấy lệnh ở /lenh mỗi giây. Trang này
+  nhận thay đổi qua kênh đẩy EventSource, gửi lệnh qua REST.
 
   Quy tắc của database chỉ cho đọc/ghi dưới /may/<mã bí mật>. Mã bí mật
   KHÔNG nằm trong file này: người xem tự nhập, lưu trong localStorage của
@@ -119,7 +120,7 @@ input:focus{outline:2px solid var(--acc);outline-offset:-1px}
     </div>
   </div>
   <div id="msg"></div>
-  <div class="note">Lệnh đi qua Firebase nên tới máy chậm <b>10–20 giây</b>. Trang này cố ý
+  <div class="note">Lệnh đi qua Firebase nên tới máy chậm <b>vài giây</b>. Trang này cố ý
   <b>không có nút CHẠY</b>: người bấm từ xa không nhìn thấy máy. Nút DỪNG ở đây
   <b style="color:var(--warn)">không phải nút dừng khẩn cấp</b> — nút STOP và E-stop trên tủ điện vẫn là
   thiết bị bảo vệ chính.</div>
@@ -168,9 +169,12 @@ const S2=["LỖI","Về home trục M3","Về home trục M4","Chờ phôi","H�
 "Trả phôi về trạm — hạ","Trả phôi về trạm — nhả","Trả phôi về trạm — nâng",
 "Khay ở kho — chờ lấy phôi ra"];
 
-/* ESP32 ghi lên 10 s/lần. Quá chừng này không thấy ghi thì coi như mất. */
-const T_BOARD_MAT = 45e3;
-const CHU_KY = 5e3;
+/* ESP32 ghi lên ngay khi số liệu đổi, máy đứng yên thì 5 s/lần. Quá chừng
+   này không thấy ghi thì coi như mất. */
+const T_BOARD_MAT = 20e3;
+/* Firebase đẩy thay đổi xuống qua kênh EventSource. CHU_KY chỉ để vẽ lại
+   dòng "… giây trước", và để đọc lại toàn bộ khi kênh đẩy bị đứt. */
+const CHU_KY = 1e3;
 /* Địa chỉ database không phải bí mật (quy tắc mới là chỗ chặn), nên điền sẵn */
 const DB_MAC_DINH = "https://may-phan-loai-default-rtdb.asia-southeast1.firebasedatabase.app";
 
@@ -184,9 +188,10 @@ $("bSave").onclick=()=>{
   url=$("iUrl").value.trim(); if($("iTok").value)tok=$("iTok").value;
   url=url.replace(/\/+$/,"");
   ghi("pl_db",url); ghi("pl_key",tok); $("iTok").value="";
-  tick();
+  dongKenh(); tick();
 };
-$("bForget").onclick=()=>{tok="";ghi("pl_db","");ghi("pl_key","");url=DB_MAC_DINH;$("iUrl").value=url;tick()};
+$("bForget").onclick=()=>{tok="";ghi("pl_db","");ghi("pl_key","");url=DB_MAC_DINH;$("iUrl").value=url;dongKenh();tick()};
+function dongKenh(){ g=null; if(es){ es.close(); es=null; } }
 
 /* REST của Firebase: <db>/may/<mã>/<đường>.json */
 async function fb(duong,pp,than){
@@ -198,14 +203,46 @@ async function fb(duong,pp,than){
   return r.json();
 }
 
+/* ---------- kênh đẩy của Firebase ----------
+   Firebase REST hỗ trợ Server-Sent Events: sự kiện "put" thay cả nhánh,
+   "patch" gộp vài khoá. Giữ bản sao g rồi vẽ lại mỗi khi có sự kiện. */
+let g=null, es=null, esUrl="";
+function datTai(goc,duong,giaTri){
+  const k=duong.split("/").filter(Boolean);
+  if(!k.length) return giaTri;
+  goc=goc&&typeof goc==="object"?goc:{};
+  let o=goc;
+  for(let i=0;i<k.length-1;i++){ if(!o[k[i]]||typeof o[k[i]]!=="object")o[k[i]]={}; o=o[k[i]]; }
+  if(giaTri===null) delete o[k[k.length-1]]; else o[k[k.length-1]]=giaTri;
+  return goc;
+}
+function moKenh(){
+  const u=url+"/may/"+encodeURIComponent(tok)+".json";
+  if(es&&esUrl===u&&es.readyState!==2) return;
+  if(es) es.close();
+  esUrl=u; es=new EventSource(u);
+  es.addEventListener("put",e=>{ const m=JSON.parse(e.data); g=datTai(g,m.path,m.data); veTuG(); });
+  es.addEventListener("patch",e=>{ const m=JSON.parse(e.data);
+    for(const k in m.data) g=datTai(g,m.path.replace(/\/$/,"")+"/"+k,m.data[k]); veTuG(); });
+  es.addEventListener("cancel",()=>{ es.close(); loiMa(); });   /* quy tắc từ chối: sai mã */
+  es.onerror=()=>{ if(es.readyState===2){ g=null; } };          /* trình duyệt tự nối lại */
+}
+function loiMa(){
+  $("bStop").disabled=$("bClear").disabled=true;
+  $("dBoard").className="dot r"; $("tBoard").textContent="Sai mã bí mật";
+  $("cfg").classList.add("show");
+}
+
 /* Đổi dữ liệu Firebase sang đúng dạng mà phần vẽ bên dưới dùng */
-async function layTrangThai(){
-  const g=await fb("")||{};
+function doiDang(g){
+  g=g||{};
   const t=g.trangThai||null, n=g.theoNgay||{};
   return {ok:1,bayGio:Date.now(),boardGoiLuc:t?t.luc:0,hienTai:t,
     lenhCho:g.lenh||"",lenhDaChay:g.lenhDaChay||null,
     ngay:Object.keys(n).sort().slice(-14).map(k=>({d:k,kl:n[k][0],pk:n[k][1]}))};
 }
+async function layTrangThai(){ return doiDang(await fb("")); }
+function veTuG(){ if(g===null) return; d=doiDang(g); if(!dangDung) ve(); }
 
 function bao(t,mau){$("msg").textContent=t;$("msg").style.color=mau||"var(--tx2)"}
 function hien(id,on){$(id).style.display=on?"":"none"}
@@ -220,15 +257,20 @@ async function tick(){
     $("bStop").disabled=$("bClear").disabled=true;
     return;
   }
-  try{ d=await layTrangThai(); }
+  /* Kênh đẩy đang chạy: chỉ vẽ lại để cập nhật "… giây trước" */
+  if(g!==null && es && es.readyState===1){ d=doiDang(g); ve(); return; }
+  /* Chưa có kênh (mới mở trang, đổi mã, hoặc kênh đứt): đọc một lần để
+     kiểm tra mã và có ngay số liệu, rồi mở kênh đẩy */
+  try{ g=await fb("")||{}; d=doiDang(g); }
   catch(e){
+    if(e.sai){ g=null; if(es){es.close();es=null;} loiMa(); return; }
     $("bStop").disabled=$("bClear").disabled=true;
     $("dBoard").className="dot r";
-    if(e.sai){ $("tBoard").textContent="Sai mã bí mật"; $("cfg").classList.add("show"); return; }
     $("tBoard").textContent="Không gọi được Firebase";
     $("foot").textContent="Lỗi: "+e.message+". Kiểm tra lại địa chỉ database và mạng.";
     return;
   }
+  moKenh();
   ve();
 }
 
@@ -282,7 +324,8 @@ function ve(){
     +`<u style="height:${x.pk/max*100}%"></u></div>`).join("");
   $("xax").innerHTML=n.map(x=>`<span>${+x.d.slice(8)}/${+x.d.slice(5,7)}</span>`).join("");
   $("c14").textContent=n.reduce((s,x)=>s+x.kl+x.pk,0);
-  $("foot").textContent="Cập nhật "+luc(d.bayGio)+" · trang tự tải lại mỗi "+CHU_KY/1000+" giây.";
+  $("foot").textContent=(es&&es.readyState===1?"Đang nhận trực tiếp từ Firebase":"Đang nối lại Firebase…")
+    +" · ESP32 gửi lần cuối lúc "+(d.boardGoiLuc?luc(d.boardGoiLuc):"—")+".";
 }
 
 /* ---------- lệnh ----------
@@ -300,7 +343,7 @@ async function datLenh(c){
 }
 
 $("bStop").onclick=async()=>{
-  if(!confirm("Dừng máy từ xa?\n\nLệnh tới máy sau khoảng 10–20 giây. Nếu có người ở cạnh máy, "
+  if(!confirm("Dừng máy từ xa?\n\nLệnh tới máy sau khoảng 2–5 giây. Nếu có người ở cạnh máy, "
     +"hãy gọi họ bấm STOP trên tủ điện — nhanh hơn nhiều."))return;
   dangDung=true; $("bStop").disabled=true; hien("bCancel",false);
   try{
@@ -313,7 +356,7 @@ $("bStop").onclick=async()=>{
       if(Date.now()-t0>45e3)throw new Error("ESP32 không lấy lệnh sau 45 giây");
     }
     await datLenh("DUNG-XACNHAN");
-    bao("Bước 2/2: đã gửi DUNG-XACNHAN. Máy sẽ dừng khi ESP32 lấy lệnh (≤ 10 giây).","var(--warn)");
+    bao("Bước 2/2: đã gửi DUNG-XACNHAN. Máy sẽ dừng khi ESP32 lấy lệnh (khoảng 1–2 giây).","var(--warn)");
   }catch(e){
     bao("Không dừng được: "+e.message,"var(--err)");
   }
