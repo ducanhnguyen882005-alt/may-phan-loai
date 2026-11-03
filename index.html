@@ -5,12 +5,12 @@
 <!--
   Trang tĩnh cho GitHub Pages. Không nói chuyện thẳng với ESP32 (trình
   duyệt chặn trang HTTPS gọi vào http://192.168.x.x trong xưởng), mà đọc
-  qua Apps Script ở code/GoogleSheet/Code.gs: ESP32 gọi lên đó 30 giây
-  một lần, trang này gọi action=status / action=cmd.
+  qua Firebase Realtime Database: ESP32 ghi trạng thái lên đó 10 giây một
+  lần và lấy lệnh ở /lenh, trang này đọc/ghi cùng chỗ qua REST.
 
-  Đường dẫn Apps Script và mã bí mật KHÔNG nằm trong file này. Người xem
-  tự nhập, lưu trong localStorage của trình duyệt họ. Repo GitHub Pages
-  để công khai nên tuyệt đối không ghi hai thứ đó vào đây.
+  Quy tắc của database chỉ cho đọc/ghi dưới /may/<mã bí mật>. Mã bí mật
+  KHÔNG nằm trong file này: người xem tự nhập, lưu trong localStorage của
+  trình duyệt họ. Repo để công khai nên tuyệt đối không ghi mã vào đây.
 -->
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -90,12 +90,11 @@ input:focus{outline:2px solid var(--acc);outline-offset:-1px}
 </header>
 
 <div class="card" id="cfg">
-  <h2>Kết nối Apps Script</h2>
+  <h2>Kết nối Firebase</h2>
   <p class="note" style="margin-top:0">Hai ô này chỉ lưu trong trình duyệt của bạn, không gửi đi đâu ngoài
-  Google. Lấy đường dẫn ở bước <i>Triển khai → Ứng dụng web</i>, mã bí mật là <code>MA_BI_MAT</code>
-  trong <code>Code.gs</code>.</p>
-  <label for="iUrl">Đường dẫn ứng dụng web (…/exec)</label>
-  <input id="iUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec" autocomplete="off">
+  Firebase. Không có mã bí mật thì database từ chối mọi lượt đọc và ghi.</p>
+  <label for="iUrl">Địa chỉ Realtime Database</label>
+  <input id="iUrl" placeholder="https://….firebasedatabase.app" autocomplete="off">
   <label for="iTok">Mã bí mật</label>
   <input id="iTok" type="password" autocomplete="off">
   <div class="btns" style="margin-top:12px">
@@ -120,7 +119,7 @@ input:focus{outline:2px solid var(--acc);outline-offset:-1px}
     </div>
   </div>
   <div id="msg"></div>
-  <div class="note">Lệnh đi qua Google nên tới máy chậm <b>30–60 giây</b>. Trang này cố ý
+  <div class="note">Lệnh đi qua Firebase nên tới máy chậm <b>10–20 giây</b>. Trang này cố ý
   <b>không có nút CHẠY</b>: người bấm từ xa không nhìn thấy máy. Nút DỪNG ở đây
   <b style="color:var(--warn)">không phải nút dừng khẩn cấp</b> — nút STOP và E-stop trên tủ điện vẫn là
   thiết bị bảo vệ chính.</div>
@@ -169,28 +168,43 @@ const S2=["LỖI","Về home trục M3","Về home trục M4","Chờ phôi","H�
 "Trả phôi về trạm — hạ","Trả phôi về trạm — nhả","Trả phôi về trạm — nâng",
 "Khay ở kho — chờ lấy phôi ra"];
 
-/* Board gọi lên 30 s/lần. Quá chừng này không thấy gọi thì coi như mất. */
-const T_BOARD_MAT = 90e3;
-const CHU_KY = 15e3;
+/* ESP32 ghi lên 10 s/lần. Quá chừng này không thấy ghi thì coi như mất. */
+const T_BOARD_MAT = 45e3;
+const CHU_KY = 5e3;
+/* Địa chỉ database không phải bí mật (quy tắc mới là chỗ chặn), nên điền sẵn */
+const DB_MAC_DINH = "https://may-phan-loai-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 /* ---------- cài đặt, chỉ trong trình duyệt này ---------- */
 function doc(k){try{return localStorage.getItem(k)||""}catch(e){return""}}
 function ghi(k,v){try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}}
-let url=doc("pl_url"), tok=doc("pl_tok");
+let url=doc("pl_db")||DB_MAC_DINH, tok=doc("pl_key");
 $("iUrl").value=url;
 $("bCfg").onclick=()=>$("cfg").classList.toggle("show");
 $("bSave").onclick=()=>{
   url=$("iUrl").value.trim(); if($("iTok").value)tok=$("iTok").value;
-  ghi("pl_url",url); ghi("pl_tok",tok); $("iTok").value="";
+  url=url.replace(/\/+$/,"");
+  ghi("pl_db",url); ghi("pl_key",tok); $("iTok").value="";
   tick();
 };
-$("bForget").onclick=()=>{url=tok="";ghi("pl_url","");ghi("pl_tok","");$("iUrl").value="";tick()};
+$("bForget").onclick=()=>{tok="";ghi("pl_db","");ghi("pl_key","");url=DB_MAC_DINH;$("iUrl").value=url;tick()};
 
-async function goi(q){
-  const u=url+(url.includes("?")?"&":"?")+"token="+encodeURIComponent(tok)+"&"+q+"&_="+Date.now();
-  const r=await fetch(u,{cache:"no-store"});
+/* REST của Firebase: <db>/may/<mã>/<đường>.json */
+async function fb(duong,pp,than){
+  const r=await fetch(url+"/may/"+encodeURIComponent(tok)+duong+".json",
+    {method:pp||"GET",cache:"no-store",body:than===undefined?undefined:JSON.stringify(than),
+     headers:than===undefined?undefined:{"Content-Type":"application/json"}});
+  if(r.status===401||r.status===403)throw Object.assign(new Error("TOKEN-SAI"),{sai:1});
   if(!r.ok)throw new Error("HTTP "+r.status);
   return r.json();
+}
+
+/* Đổi dữ liệu Firebase sang đúng dạng mà phần vẽ bên dưới dùng */
+async function layTrangThai(){
+  const g=await fb("")||{};
+  const t=g.trangThai||null, n=g.theoNgay||{};
+  return {ok:1,bayGio:Date.now(),boardGoiLuc:t?t.luc:0,hienTai:t,
+    lenhCho:g.lenh||"",lenhDaChay:g.lenhDaChay||null,
+    ngay:Object.keys(n).sort().slice(-14).map(k=>({d:k,kl:n[k][0],pk:n[k][1]}))};
 }
 
 function bao(t,mau){$("msg").textContent=t;$("msg").style.color=mau||"var(--tx2)"}
@@ -206,18 +220,13 @@ async function tick(){
     $("bStop").disabled=$("bClear").disabled=true;
     return;
   }
-  try{ d=await goi("action=status"); }
+  try{ d=await layTrangThai(); }
   catch(e){
     $("bStop").disabled=$("bClear").disabled=true;
-    $("dBoard").className="dot r"; $("tBoard").textContent="Không gọi được Apps Script";
-    $("foot").textContent="Lỗi: "+e.message+". Kiểm tra lại đường dẫn …/exec và quyền truy cập “Bất kỳ ai”.";
-    return;
-  }
-  if(!d.ok){
-    $("bStop").disabled=$("bClear").disabled=true;
     $("dBoard").className="dot r";
-    $("tBoard").textContent=d.loi==="TOKEN-SAI"?"Sai mã bí mật":"Lỗi: "+d.loi;
-    $("cfg").classList.add("show");
+    if(e.sai){ $("tBoard").textContent="Sai mã bí mật"; $("cfg").classList.add("show"); return; }
+    $("tBoard").textContent="Không gọi được Firebase";
+    $("foot").textContent="Lỗi: "+e.message+". Kiểm tra lại địa chỉ database và mạng.";
     return;
   }
   ve();
@@ -243,7 +252,7 @@ function ve(){
     $("cRun").textContent=h.phien; $("cTray").firstChild.nodeValue=h.b2n;
     const loi=h.f1||h.f2;
     if(!song){
-      al.classList.add("show"); $("alTitle").textContent="ESP32 không gọi lên Google";
+      al.classList.add("show"); $("alTitle").textContent="ESP32 không gửi lên Firebase";
       $("alBody").textContent="Số liệu bên dưới là lần cuối lúc "+luc(d.boardGoiLuc)
         +". Kiểm tra nguồn và WiFi của ESP32.";
     }else if(loi){
@@ -277,19 +286,21 @@ function ve(){
 }
 
 /* ---------- lệnh ----------
-   ESP32 chỉ dừng khi nhận DUNG rồi DUNG-XACNHAN trong 60 s. Apps Script
-   không nhận lệnh mới khi ô A2 còn lệnh chờ, nên phải đợi ESP32 lấy DUNG
-   xong (lenhCho rỗng) rồi mới gửi bước 2. */
+   ESP32 chỉ dừng khi nhận DUNG rồi DUNG-XACNHAN trong 60 s. Hàng chờ chỉ
+   giữ một lệnh ở /lenh, không ghi đè lệnh đang chờ, nên phải đợi ESP32 lấy
+   DUNG xong (/lenh rỗng) rồi mới gửi bước 2. */
 let dangDung=false;
 const ngu=ms=>new Promise(r=>setTimeout(r,ms));
 
 async function datLenh(c){
-  const r=await goi("action=cmd&c="+c);
-  if(!r.ok) throw new Error(r.loi==="DANG-CHO"?"đang có lệnh "+r.lenhCho+" chờ, bấm Huỷ trước":r.loi);
+  if(c==="HUY"){ await fb("/lenh","DELETE"); return; }
+  const cho=await fb("/lenh");
+  if(cho) throw new Error("đang có lệnh "+cho+" chờ, bấm Huỷ trước");
+  await fb("/lenh","PUT",c);
 }
 
 $("bStop").onclick=async()=>{
-  if(!confirm("Dừng máy từ xa?\n\nLệnh tới máy sau khoảng 30–60 giây. Nếu có người ở cạnh máy, "
+  if(!confirm("Dừng máy từ xa?\n\nLệnh tới máy sau khoảng 10–20 giây. Nếu có người ở cạnh máy, "
     +"hãy gọi họ bấm STOP trên tủ điện — nhanh hơn nhiều."))return;
   dangDung=true; $("bStop").disabled=true; hien("bCancel",false);
   try{
@@ -297,13 +308,12 @@ $("bStop").onclick=async()=>{
     bao("Bước 1/2: đã gửi DUNG, chờ ESP32 lấy…","var(--warn)");
     const t0=Date.now();
     for(;;){
-      await ngu(4000);
-      d=await goi("action=status");
-      if(!d.lenhCho)break;
-      if(Date.now()-t0>75e3)throw new Error("ESP32 không lấy lệnh sau 75 giây");
+      await ngu(2000);
+      if(!await fb("/lenh"))break;
+      if(Date.now()-t0>45e3)throw new Error("ESP32 không lấy lệnh sau 45 giây");
     }
     await datLenh("DUNG-XACNHAN");
-    bao("Bước 2/2: đã gửi DUNG-XACNHAN. Máy sẽ dừng khi ESP32 lấy lệnh (≤ 30 giây).","var(--warn)");
+    bao("Bước 2/2: đã gửi DUNG-XACNHAN. Máy sẽ dừng khi ESP32 lấy lệnh (≤ 10 giây).","var(--warn)");
   }catch(e){
     bao("Không dừng được: "+e.message,"var(--err)");
   }

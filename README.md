@@ -1,76 +1,83 @@
 # Xem máy phân loại từ xa qua GitHub Pages
 
-`index.html` là trang tĩnh, đưa lên GitHub Pages thì mở được từ bất cứ đâu
-(ví dụ `https://<tên-tài-khoản>.github.io/may-phan-loai/`).
+`index.html` là trang tĩnh trên GitHub Pages, mở được từ bất cứ đâu:
+https://ducanhnguyen882005-alt.github.io/may-phan-loai/
 
 ## Trang lấy dữ liệu từ đâu
 
 ```
-ESP32 ──(HTTPS, 30 giây/lần)──► Google Apps Script ◄──(HTTPS)── trang GitHub Pages
-         gửi số liệu, lấy lệnh        code/GoogleSheet/Code.gs      action=status / action=cmd
+ESP32 (WiFi trường) ──HTTPS, 10 giây/lần──► Firebase Realtime Database ◄──HTTPS── trang GitHub Pages
+                                             (gói Spark, miễn phí)
 ```
 
-Trang trên GitHub **không gọi thẳng ESP32** được: trình duyệt chặn trang
-HTTPS gọi vào `http://192.168.x.x`, còn WiFi trường thì chặn mọi kết nối
-gọi vào board. Cả ESP32 lẫn trang web cùng gọi ra Apps Script, cách mà
-firmware đã dùng sẵn. **Không phải sửa firmware.**
+Trang **không gọi thẳng ESP32**: trình duyệt chặn trang HTTPS gọi vào
+`http://192.168.x.x`, còn WiFi trường thì chặn mọi kết nối gọi vào board.
+Cả ESP32 lẫn trang web cùng gọi ra Firebase.
 
-Hệ quả: số liệu trễ tới 30 giây, lệnh tới máy sau 30–60 giây.
+- Số liệu trễ tối đa khoảng **10 giây**. Trang tự tải lại mỗi 5 giây.
+- Lệnh tới máy sau **10–20 giây**.
 
-## Điều kiện trước
+## Dữ liệu trong database
 
-Phần **"Xem máy từ xa qua Google Sheet"** trong `code/HUONG-DAN-ESP32.md`
-của đồ án phải chạy được trước:
-Apps Script đã triển khai dạng *Ứng dụng web* (truy cập **Bất kỳ ai**), và
-đường dẫn cùng mã bí mật đã nhập vào board ở `http://192.168.4.1/sheet`.
+Mọi thứ nằm dưới `/may/<mã bí mật>/`:
 
-## Đưa lên GitHub Pages
+| Đường | Ai ghi | Nội dung |
+|---|---|---|
+| `trangThai` | ESP32 | `today kl pk phien s1 s2 f1 f2 b2n link msg`, `luc` = giờ máy chủ Firebase |
+| `theoNgay/<yyyy-mm-dd>` | ESP32 | `[kim loại, phi kim]` của ngày đó |
+| `lenh` | trang web | lệnh đang chờ: `DUNG`, `DUNG-XACNHAN`, `XOALOI`. ESP32 lấy xong thì xoá |
+| `lenhDaChay` | ESP32 | lệnh vừa lấy và lúc lấy |
 
-1. Vào github.com → **New repository**, đặt tên ví dụ `may-phan-loai`,
-   chọn **Public** (GitHub Pages miễn phí chỉ dùng được cho repo công khai).
-2. **Add file → Upload files**, kéo `index.html` vào, rồi **Commit**.
-3. **Settings → Pages** → *Source*: **Deploy from a branch**, *Branch*:
-   **main**, thư mục **/ (root)** → **Save**.
-4. Đợi 1–2 phút, trang hiện ở `https://<tên-tài-khoản>.github.io/may-phan-loai/`.
+**Quy tắc bảo mật** (Firebase console → Realtime Database → Rules): toàn bộ
+database bị khoá. Chỉ được đọc/ghi dưới `/may/$ma` khi `$ma` trùng mã bí mật.
+Không có mã thì không xem được, không bấm lệnh được.
 
 ## Lần đầu mở trang
 
-Bấm **Cài đặt**, dán **đường dẫn …/exec** của Apps Script và **mã bí mật**
-(`MA_BI_MAT` trong `Code.gs`), rồi **Lưu & thử**.
+Bấm **Cài đặt**. Ô địa chỉ database đã điền sẵn, chỉ cần dán **mã bí mật** →
+**Lưu & thử**.
 
-- Hai thứ này **chỉ lưu trong trình duyệt** của máy đang mở (localStorage),
-  **không nằm trong `index.html`**. Repo công khai nên tuyệt đối không ghi
-  chúng vào file rồi đẩy lên GitHub.
-- Ai không có mã bí mật thì mở trang chỉ thấy ô cài đặt trống, không xem
-  được số liệu và không bấm được lệnh.
-- Điện thoại khác muốn xem thì nhập lại một lần trên máy đó.
-- Dùng máy tính chung thì bấm **Xoá khỏi máy này** khi xong.
+- Mã chỉ lưu trong trình duyệt của máy đang mở (localStorage), **không nằm
+  trong `index.html`**. Repo công khai nên tuyệt đối không ghi mã vào đây.
+- Mỗi điện thoại hoặc máy tính khác phải nhập một lần.
+- Dùng máy chung thì bấm **Xoá khỏi máy này** khi xong.
+
+## Nhập cài đặt vào ESP32 (không cần WiFi `PhanLoai-ESP32`)
+
+Cắm cáp USB vào cổng **UART** hoặc cổng **USB** của ESP32, mở Serial Monitor
+ở 115200 baud, gõ từng dòng rồi Enter:
+
+```
+SHEET URL https://may-phan-loai-default-rtdb.asia-southeast1.firebasedatabase.app
+SHEET TOK <mã bí mật>
+SHEET ?
+```
+
+`SHEET ?` trả về `lan goi cuoi OK (ma 200)` là ESP32 đã gửi lên được.
+Tên lệnh vẫn là `SHEET` vì chúng kế thừa từ bản dùng Google Sheet trước đây.
 
 ## Trang có gì
 
 | Phần | Nội dung |
 |---|---|
-| Chấm trạng thái | ESP32 gọi lên Google cách đây bao lâu. Quá 90 giây thì báo đỏ |
+| Chấm trạng thái | ESP32 gửi lên cách đây bao lâu. Quá 45 giây thì báo đỏ |
 | Trạng thái máy | Bước Board 1 / Board 2, bảng đỏ khi có lỗi |
 | Ô đếm | Hôm nay (kim loại / phi kim), từ lúc bật máy, phôi trong khay, tổng 14 ngày |
 | Biểu đồ | Sản lượng 14 ngày |
 | **DỪNG MÁY** | Tự gửi hai bước `DUNG` rồi `DUNG-XACNHAN` (ESP32 bắt buộc hai bước) |
 | **Xoá lỗi** | Gửi `XOALOI`, chỉ bật khi máy đang báo lỗi |
-| Huỷ lệnh đang chờ | Hiện khi có lệnh trong hàng chờ mà ESP32 chưa lấy |
+| Huỷ lệnh đang chờ | Hiện khi có lệnh ESP32 chưa lấy |
 
-**Không có nút CHẠY**, cố ý: người bấm từ xa không nhìn thấy máy (cùng lý do
-đã bỏ nút START trên màn hình GOT). Muốn chạy máy thì bấm nút trên tủ điện.
+**Không có nút CHẠY**, cố ý: người bấm từ xa không nhìn thấy máy.
 
-> Nút DỪNG trên trang này tới máy chậm 30–60 giây và phụ thuộc WiFi lẫn
-> Google. Nó **không phải nút dừng khẩn cấp**. Nút STOP và E-stop trên tủ
-> điện vẫn là thiết bị bảo vệ chính.
+> Nút DỪNG trên trang này phụ thuộc WiFi và Firebase, **không phải nút
+> dừng khẩn cấp**. Nút STOP và E-stop trên tủ điện vẫn là thiết bị bảo vệ chính.
 
 ## Dò lỗi
 
 | Hiện tượng | Nguyên nhân |
 |---|---|
-| "Không gọi được Apps Script" | Sai đường dẫn (phải kết thúc bằng `/exec`), hoặc lúc triển khai chưa chọn *Bất kỳ ai* |
-| "Sai mã bí mật" | Mã gõ trên trang khác `MA_BI_MAT` trong `Code.gs` |
-| "Board chưa gọi lên lần nào" | ESP32 chưa nhập đường dẫn/mã ở trang `/sheet`, hoặc chưa vào được WiFi có Internet |
-| "ESP32 im lặng từ …" | ESP32 mất điện hoặc mất WiFi; số liệu đang hiện là lần cuối |
-| Sửa `Code.gs` xong mà trang không đổi | Apps Script phải **Triển khai → Quản lý → sửa → Phiên bản mới**, chỉ lưu thì chưa có hiệu lực |
+| "Sai mã bí mật" | Mã gõ trên trang khác mã trong quy tắc database |
+| "Không gọi được Firebase" | Sai địa chỉ database hoặc mất mạng |
+| "ESP32 im lặng từ …" | ESP32 mất điện, mất WiFi, hoặc chưa nhập `SHEET URL` / `SHEET TOK` |
+| "Mất tín hiệu Board 1" | ESP32 vẫn lên mạng nhưng không nhận được dữ liệu từ Board 1 (dây D18 → GPIO18, GND) |
