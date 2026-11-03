@@ -44,7 +44,7 @@ Bấm **Cài đặt**. Ô địa chỉ database đã điền sẵn, chỉ cần 
 
 ## Nhập cài đặt vào ESP32 (không cần WiFi `PhanLoai-ESP32`)
 
-Cắm cáp USB vào cổng **UART** hoặc cổng **USB** của ESP32, mở Serial Monitor
+Cắm cáp USB vào cổng **USB** của ESP32 (không phải cổng UART), mở Serial Monitor
 ở 115200 baud, gõ từng dòng rồi Enter:
 
 ```
