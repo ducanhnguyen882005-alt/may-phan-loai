@@ -27,8 +27,9 @@ Mọi thứ nằm dưới `/may/<mã bí mật>/`:
 
 | Đường | Ai ghi | Nội dung |
 |---|---|---|
-| `trangThai` | ESP32 | `today kl pk phien s1 s2 f1 f2 b2n link msg`, `luc` = giờ máy chủ Firebase |
-| `theoNgay/<yyyy-mm-dd>` | ESP32 | `[kim loại, phi kim]` của ngày đó |
+| `trangThai` | ESP32 | `today kl pk kr phien s1 s2 f1 f2 b2n link msg in1 out in2 cell m3 m4`, `luc` = giờ máy chủ Firebase |
+| `theoNgay/<yyyy-mm-dd>` | ESP32 | `[kim loại, phi kim, chưa rõ loại]` của ngày đó |
+| `nhatKy` | ESP32 | 40 dòng nhật ký gần nhất, mới nhất ở đầu: `{t, w, m}` |
 | `lenh` | trang web | lệnh đang chờ: `DUNG`, `DUNG-XACNHAN`, `XOALOI`. ESP32 lấy xong thì xoá |
 | `lenhDaChay` | ESP32 | lệnh vừa lấy và lúc lấy |
 
@@ -68,6 +69,8 @@ Tên lệnh vẫn là `SHEET` vì chúng kế thừa từ bản dùng Google She
 | Trạng thái máy | Bước Board 1 / Board 2, bảng đỏ khi có lỗi |
 | Ô đếm | Hôm nay (kim loại / phi kim), từ lúc bật máy, phôi trong khay, tổng 14 ngày |
 | Biểu đồ | Sản lượng 14 ngày |
+| Cảm biến | Đèn từng cảm biến Board 1 / Board 2, van và động cơ, vị trí vít me |
+| Nhật ký | 40 dòng gần nhất: lỗi, cảnh báo, các lần dừng / xoá lỗi, phôi cộng bù |
 | **DỪNG MÁY** | Tự gửi hai bước `DUNG` rồi `DUNG-XACNHAN` (ESP32 bắt buộc hai bước) |
 | **Xoá lỗi** | Gửi `XOALOI`, chỉ bật khi máy đang báo lỗi |
 | Huỷ lệnh đang chờ | Hiện khi có lệnh ESP32 chưa lấy |

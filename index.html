@@ -80,8 +80,29 @@ input:focus{outline:2px solid var(--acc);outline-offset:-1px}
 #cfg{display:none}
 #cfg.show{display:block}
 #msg{font-size:12.5px;margin-top:10px;min-height:1.5em;color:var(--tx2)}
+/* đèn cảm biến: chép từ trang trong xưởng (code/ESP32S3_Web/webpage.h) */
+.cols{grid-template-columns:2fr 1fr;margin-bottom:12px}
+.cols .card{margin-bottom:0}
+.io{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px}
+.led{display:flex;align-items:center;gap:9px;background:var(--panel2);border:1px solid var(--line);
+ border-radius:7px;padding:8px 11px}
+.led .d{width:11px;height:11px;border-radius:50%;background:var(--off);flex:none}
+.led.on{background:#0d3320;border-color:#166534}
+.led.on .d{background:var(--on);box-shadow:0 0 9px #22c55eaa}
+.led .t{min-width:0}
+.led .n{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.led .s{font-size:11px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;color:var(--tx3);font-weight:600;font-size:11px;text-transform:uppercase;
+ letter-spacing:.05em;padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
+td{padding:9px 10px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.t{color:var(--tx3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;background:var(--errbg);color:#fca5a5;border:1px solid #7f1d1d;
+ border-radius:5px;padding:1px 8px;font-size:11px;font-weight:600}
+.tag.w{background:#3a2a08;color:#fcd34d;border-color:#78350f}
 @media(max-width:760px){.counts{grid-template-columns:repeat(2,1fr)}.ctl{grid-template-columns:1fr}
- button.stop{width:100%}}
+ .cols{grid-template-columns:1fr} button.stop{width:100%}}
 </style></head><body>
 
 <header>
@@ -151,6 +172,34 @@ input:focus{outline:2px solid var(--acc);outline-offset:-1px}
   </div>
 </div>
 
+<div class="grid cols">
+  <div class="card">
+    <h2>Cảm biến Board 1 — băng tải, tay gắp, khay</h2>
+    <div class="io" id="ioB1"></div>
+  </div>
+  <div class="card">
+    <h2>Cảm biến Board 2 — vít me</h2>
+    <div class="io" id="ioB2"></div>
+  </div>
+</div>
+<div class="grid cols">
+  <div class="card">
+    <h2>Van khí nén &amp; động cơ</h2>
+    <div class="io" id="ioOut"></div>
+  </div>
+  <div class="card">
+    <h2>Vị trí vít me</h2>
+    <div class="io" id="ioPos"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Nhật ký</h2>
+  <table><thead><tr><th style="width:150px">Thời điểm</th><th style="width:90px">Mức</th>
+    <th>Nội dung</th></tr></thead><tbody id="logB"></tbody></table>
+  <div class="empty" id="logEmpty">Chưa có dòng nào.</div>
+</div>
+
 <p class="note" id="foot"></p>
 
 <script>
@@ -170,6 +219,30 @@ const S2=["LỖI","Về home trục M3","Về home trục M4","Chờ phôi","H�
 "Về home","Đẩy khay vào kho","Chờ khay về vị trí xếp","Đọc vật liệu (CB17)",
 "Trả phôi về trạm — hạ","Trả phôi về trạm — nhả","Trả phôi về trạm — nâng",
 "Khay ở kho — chờ lấy phôi ra"];
+
+/* Nhãn từng bit cảm biến / van: chép từ webpage.h, khớp bản tin T của Board 1 */
+const B1=[["CB1","Có phôi → chạy băng tải"],["CB2","Phôi tới vị trí gắp"],["CB3","Tay gắp kẹp kín"],
+["CB4","Dùng ở bước 7·9·10"],["CB5","Tay gắp mở"],["CB6","Dùng ở bước 6·7·10"],
+["CB7","Dùng ở bước 8"],["CB8","Y1 đã hồi"],["CB9","Có phôi trong máng"],
+["CB10","Y1 đã về"],["CB11","Đĩa xoay chia ô"],["CB12","Cơ cấu khay"],
+["CB13","Cơ cấu khay"],["CB14","Cơ cấu khay"],["CB15","Cơ cấu khay"],
+["CB26","Cơ cấu khay"],["CB27","Cơ cấu khay"],["START","Nút nhấn"],["STOP","Nút nhấn"]];
+const B2=[["CB23","Home trục M3"],["CB21","Home trục M4"],["CB16","Báo có phôi"],
+["CB17","Phân biệt vật liệu"],["CB19","Đầu hút đã lên"],["CB18","Đầu hút đã xuống"],
+["CB24","Khay đã vào kho"],["CB25","Khay đã về vị trí xếp"]];
+const OU=[["Y1","Xy-lanh chặn / gạt"],["Y2","Tay gắp kẹp"],["Y3","Nâng / hạ tay gắp"],
+["Y4","Xoay tay gắp"],["Y5","Tay gắp 2 — nâng/hạ"],["Y6","Tay gắp 2 — trượt"],["Y7","Tay gắp 2 — kẹp"],
+["DC1","Motor băng tải"],["DC2","Motor đĩa xoay"]];
+function leds(el,list){el.innerHTML=list.map((x,i)=>
+ `<div class="led" id="${el.id}${i}"><span class="d"></span><span class="t">
+  <span class="n">${x[0]}</span><br><span class="s">${x[1]}</span></span></div>`).join("")}
+function paint(el,list,mask){for(let i=0;i<list.length;i++)
+ $(el+i).classList.toggle("on",!!(mask>>>i&1))}
+leds($("ioB1"),B1);leds($("ioB2"),B2);leds($("ioOut"),OU);
+$("ioPos").innerHTML=[["pM3","Encoder M3 (xung)"],["pM4","Encoder M4 (xung)"],["pCell","Ô đích hiện tại"]]
+ .map(x=>`<div class="led"><span class="t"><span class="n" id="${x[0]}">—</span><br>
+   <span class="s">${x[1]}</span></span></div>`).join("");
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ESP32 ghi lên ngay khi số liệu đổi, máy đứng yên thì 5 s/lần. Quá chừng
    này không thấy ghi thì coi như mất. */
@@ -240,7 +313,7 @@ function doiDang(g){
   g=g||{};
   const t=g.trangThai||null, n=g.theoNgay||{};
   return {ok:1,bayGio:Date.now(),boardGoiLuc:t?t.luc:0,hienTai:t,
-    lenhCho:g.lenh||"",lenhDaChay:g.lenhDaChay||null,
+    lenhCho:g.lenh||"",lenhDaChay:g.lenhDaChay||null,nhatKy:g.nhatKy||[],
     ngay:Object.keys(n).sort().slice(-14).map(k=>({d:k,kl:n[k][0],pk:n[k][1],kr:n[k][2]||0}))};
 }
 async function layTrangThai(){ return doiDang(await fb("")); }
@@ -318,6 +391,19 @@ function ve(){
       bao("Lệnh gần nhất: "+d.lenhDaChay.lenh+" — ESP32 đã lấy lúc "+luc(d.lenhDaChay.luc)+".");
     else bao("");
   }
+
+  /* cảm biến, van, vị trí (ESP32 bản cũ chưa gửi thì để tắt hết) */
+  if(h){
+    paint("ioB1",B1,h.in1||0); paint("ioB2",B2,h.in2||0); paint("ioOut",OU,h.out||0);
+    $("pM3").textContent=h.m3??"—"; $("pM4").textContent=h.m4??"—";
+    $("pCell").textContent=h.cell??"—";
+  }
+
+  /* nhật ký, mới nhất ở trên */
+  const nk=Array.isArray(d.nhatKy)?d.nhatKy.filter(Boolean):[];
+  hien("logEmpty",!nk.length);
+  $("logB").innerHTML=nk.map(r=>`<tr><td class="t">${esc(r.t)}</td>`
+    +`<td><span class="tag${r.w?" w":""}">${r.w?"Cảnh báo":"Lỗi"}</span></td><td>${esc(r.m)}</td></tr>`).join("");
 
   /* biểu đồ */
   const n=d.ngay||[];
